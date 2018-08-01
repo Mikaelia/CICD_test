@@ -1,3 +1,14 @@
+workflows:
+  version: 2
+  build-deploy:
+    jobs:
+      - build
+      - deploy:
+          requires:
+            - build
+          filters:
+            branches:
+              only: master
 version: 2
 jobs:
   build:
@@ -27,43 +38,21 @@ jobs:
           paths:
             - "venv"
       - run:
-          name: Install dockerize
-          command: wget https://github.com/jwilder/dockerize/releases/download/$DOCKERIZE_VERSION/dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz && tar -C /usr/local/bin -xzvf dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz && rm dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz
-          environment:
-            DOCKERIZE_VERSION: v0.3.0
-      - run:
-          name: Wait for MySQL
-          command: dockerize -wait tcp://localhost:3306 -timeout 1m
-      - run:
           name: Run unit tests
           command: |
             python3 -m venv venv
             . venv/bin/activate
             python app/tests.py
-      - setup_remote_docker
+      
+      - store_artifacts:
+          path: test-reports/
+          destination: tr1
+      - store_test_results:
+          path: test-reports/
+ deploy:
+    steps:
+      - checkout
       - run:
-          name: Install Docker client
+          name: Deploy Master to Heroku
           command: |
-            set -x
-            VER="17.03.0-ce"
-            curl -L -o /tmp/docker-$VER.tgz https://get.docker.com/builds/Linux/x86_64/docker-$VER.tgz
-            tar -xz -C /tmp -f /tmp/docker-$VER.tgz
-            mv /tmp/docker/* /usr/bin
-      - run:
-         name: Build Docker image
-         command: docker build -t Mikaelia/CICD_test:$CIRCLE_SHA1 .
-      - run:
-          name: Push to DockerHub
-          command: |
-            docker login -u$DOCKERHUB_LOGIN -p$DOCKERHUB_PASSWORD
-            docker push Mikaelia/CICD_test:$CIRCLE_SHA1
-      - run:
-          name: Setup Heroku
-          command: |
-            chmod +x .circleci/setup-heroku.sh
-            .circleci/setup-heroku.sh
-      - run:
-          name: Deploy to Heroku
-          command: |
-            cd app/
-            git push heroku master
+            git push https://heroku:$HEROKU_API_KEY@git.heroku.com/$HEROKU_APP_NAME.git master
